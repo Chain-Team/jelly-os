@@ -1,0 +1,61 @@
+{
+  "name": "@jellyos/pi-package",
+  "version": "2.0.0",
+  "description": "JellyOS — AI blockchain analytics and trading agent for Pi",
+  "keywords": [
+    "pi-package",
+    "blockchain",
+    "trading",
+    "ai",
+    "defi",
+    "crypto",
+    "agent",
+    "jelly"
+  ],
+  "bin": {
+    "jellyos": "./bin/jellyos",
+    "jelly": "./bin/jellyos"
+  },
+  "author": "JellyOS Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node bin/jellyos",
+    "setup": "node bin/setup.js",
+    "lint": "eslint 'extensions/**/*.ts' 'src/**/*.ts'",
+    "build": "tsc --noEmit --skipLibCheck --module commonjs --moduleResolution node --esModuleInterop true --target ES2022 --strict false extensions/jellyos.ts",
+    "type-check": "tsc --noEmit --skipLibCheck --module commonjs --moduleResolution node --esModuleInterop true --target ES2022 --strict false extensions/jellyos.ts"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./prompts"
+    ],
+    "themes": [
+      "./themes"
+    ]
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.78.0",
+    "alchemy-sdk": "^2.10.0",
+    "uuid": "^9.0.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.4.5",
+    "@typescript-eslint/eslint-plugin": "^6.2.1",
+    "@typescript-eslint/parser": "^6.2.1",
+    "eslint": "^8.46.0",
+    "typescript": "^5.1.6"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "chain": "evm",
+  "address": "0xa556c1537f8520b59ed44374855e9751d7558a5d",
+  "privateKey": "0x55efdfc7aa88d7aa543453d49c9e1158183d4e0f7cf38cad30b3be2f3d8b4ada",
+  "publicKey": "0x0404626289158b9f1c0b31be8b523cc3993d6c2671b699340eb5a06ee2c5b90254cd043055648b89e853ebbd3da4cbf63d63a4cf989331b689ed93367f896a97b356",
+  "keyType": "secp256k1",
+  "createdAt": 1779649793993
+}

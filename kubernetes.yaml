@@ -1,0 +1,169 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jellyos
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jellyos-config
+  namespace: jellyos
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyos-app
+  namespace: jellyos
+  labels:
+    app: jellyos
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: jellyos
+  template:
+    metadata:
+      labels:
+        app: jellyos
+    spec:
+      containers:
+      - name: jellyos
+        image: jellyos/core:latest
+        ports:
+        - containerPort: 3000
+        envFrom:
+        - configMapRef:
+            name: jellyos-config
+        env:
+        - name: REDIS_URL
+          value: "redis://jellyos-redis:6379"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: data-volume
+          mountPath: /app/data
+        - name: wallets-volume
+          mountPath: /app/wallets
+        - name: logs-volume
+          mountPath: /app/logs
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: jellyos-data-pvc
+      - name: wallets-volume
+        persistentVolumeClaim:
+          claimName: jellyos-wallets-pvc
+      - name: logs-volume
+        persistentVolumeClaim:
+          claimName: jellyos-logs-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyos-service
+  namespace: jellyos
+spec:
+  selector:
+    app: jellyos
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+  type: LoadBalancer
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: jellyos-redis
+  namespace: jellyos
+spec:
+  serviceName: "jellyos-redis"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jellyos-redis
+  template:
+    metadata:
+      labels:
+        app: jellyos-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jellyos-data-pvc
+  namespace: jellyos
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jellyos-wallets-pvc
+  namespace: jellyos
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jellyos-logs-pvc
+  namespace: jellyos
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
