@@ -91,7 +91,7 @@ JellyOS is a terminal AI trading agent for blockchain analytics, prediction mark
 
 ```bash
 # Clone
-git clone https://github.com/jelly-chain/JellyOS.git
+git clone https://github.com/jelly-chain/JellyOS
 cd JellyOS
 
 # One-command setup (Linux / macOS)
