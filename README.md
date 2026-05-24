@@ -81,7 +81,6 @@ JellyOS is a terminal AI trading agent for blockchain analytics, prediction mark
 
 - **Node.js 20+** (LTS recommended)
 - **npm 9+**
-- **Pi CLI** — `npm install -g @earendil-works/pi-coding-agent` (auto-installed by setup.sh)
 - An API key for an AI model gateway (`OPENROUTER_API_KEY`, or configure any Pi-supported provider)
 - Optional: an RPC node API key for on-chain data (`ALCHEMY_KEY`)
 
@@ -91,7 +90,7 @@ JellyOS is a terminal AI trading agent for blockchain analytics, prediction mark
 
 ```bash
 # Clone
-git clone https://github.com/jelly-chain/JellyOS
+git clone https://github.com/jelly-chain/jellyOS.git
 cd JellyOS
 
 # One-command setup (Linux / macOS)
@@ -100,7 +99,6 @@ bash setup.sh
 
 `setup.sh` will:
 1. Check your Node.js version (20+ required)
-2. Install Pi CLI if not already installed
 3. Run `npm install`
 4. Launch the interactive setup wizard (`node bin/jellyos setup`) which prompts for your API keys and writes them to `~/.jelly/.env`
 
@@ -172,6 +170,8 @@ node bin/jellyos
 
 # Or if you installed globally via setup.sh:
 jelly
+Jellyos
+
 ```
 
 The terminal launches with a boot animation and drops you into the `jell>` prompt.
