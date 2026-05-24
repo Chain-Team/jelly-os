@@ -1,0 +1,148 @@
+#!/usr/bin/env node
+'use strict';
+
+/**
+ * JellyOS launcher — runs Pi with the JellyOS extension pre-loaded.
+ *
+ * Usage:
+ *   jellyos              — start interactive agent
+ *   jellyos setup        — run first-time setup wizard
+ *   jellyos -p "prompt"  — pass-through any Pi flags
+ */
+
+const { spawn, execFileSync } = require('child_process');
+const path    = require('path');
+const fs      = require('fs');
+const os      = require('os');
+const readline = require('readline');
+
+const PKG_ROOT   = path.resolve(__dirname, '..');
+const EXT_FILE   = path.join(PKG_ROOT, 'extensions', 'jellyos.ts');
+const THEME_DIR  = path.join(PKG_ROOT, 'themes');
+const JELLY_HOME = process.env.JELLYOS_HOME || path.join(os.homedir(), '.jelly');
+
+// ── Load .env from JELLY_HOME ────────────────────────────────────────────────
+const envPath = path.join(JELLY_HOME, '.env');
+if (fs.existsSync(envPath)) {
+  for (const line of fs.readFileSync(envPath, 'utf-8').split('\n')) {
+    const m = line.trim().match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+}
+
+// ── Setup wizard ─────────────────────────────────────────────────────────────
+if (process.argv[2] === 'setup') {
+  runSetup();
+  return;
+}
+
+// ── Find Pi binary ────────────────────────────────────────────────────────────
+function findPi() {
+  const local = path.join(PKG_ROOT, 'node_modules', '.bin', 'pi');
+  if (fs.existsSync(local)) return local;
+  try {
+    const which = process.platform === 'win32' ? 'where' : 'which';
+    const result = execFileSync(which, ['pi'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+    const p = result.trim().split('\n')[0];
+    if (p && fs.existsSync(p)) return p;
+  } catch { /* not in PATH */ }
+  return null;
+}
+
+const piBin = findPi();
+
+if (!piBin) {
+  console.error([
+    '',
+    '  JellyOS requires Pi to run.',
+    '  Install it with:',
+    '',
+    '    npm install -g @earendil-works/pi-coding-agent',
+    '',
+    '  Then run: jellyos',
+    '',
+  ].join('\n'));
+  process.exit(1);
+}
+
+// ── Launch Pi with JellyOS extension ─────────────────────────────────────────
+const piArgs = [
+  '--extension', EXT_FILE,
+  '--theme', path.join(THEME_DIR, 'jelly.json'),
+  ...process.argv.slice(2),
+];
+
+const child = spawn(piBin, piArgs, {
+  stdio: 'inherit',
+  env: { ...process.env, JELLYOS_HOME: JELLY_HOME },
+});
+
+child.on('error', (err) => {
+  console.error(`\nFailed to start Pi: ${err.message}\n`);
+  process.exit(1);
+});
+
+child.on('exit', (code, signal) => {
+  if (signal) process.kill(process.pid, signal);
+  else process.exit(code ?? 0);
+});
+
+// ── Setup implementation ──────────────────────────────────────────────────────
+async function runSetup() {
+  console.log('\n🪼  JellyOS Setup\n');
+  fs.mkdirSync(JELLY_HOME, { recursive: true });
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const ask = (prompt) => new Promise((res) => rl.question(prompt, res));
+
+  const read = (key) => {
+    const re = new RegExp(`^${key}=(.*)$`, 'm');
+    const m  = fs.existsSync(envPath) ? re.exec(fs.readFileSync(envPath, 'utf-8')) : null;
+    return m ? m[1] : '';
+  };
+  const write = (key, val) => {
+    const content = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+    const re = new RegExp(`^${key}=.*$`, 'm');
+    const line = `${key}=${val}`;
+    fs.writeFileSync(envPath, re.test(content) ? content.replace(re, line) : content + (content.endsWith('\n') ? '' : '\n') + line + '\n');
+  };
+
+  const fields = [
+    { key: 'OPENROUTER_API_KEY', label: 'OpenRouter API key', hint: 'https://openrouter.ai/keys', required: true },
+    { key: 'ALCHEMY_KEY',        label: 'Alchemy API key',    hint: 'https://alchemy.com',         required: false },
+    { key: 'POLYMARKET_API_KEY', label: 'Polymarket API key', hint: '',                             required: false },
+  ];
+
+  for (const f of fields) {
+    const current = read(f.key) || process.env[f.key] || '';
+    const hint    = f.hint ? ` (${f.hint})` : '';
+    const label   = `${f.label}${hint}${current ? ' [already set, Enter to keep]' : ''}: `;
+    const val     = (await ask(label)).trim();
+    if (val) write(f.key, val);
+    else if (!current && f.required) { console.log('\n  ⚠️  Required key not set. Exiting.\n'); rl.close(); process.exit(1); }
+  }
+
+  rl.close();
+  console.log(`\n✅  Config saved → ${envPath}`);
+
+  // Generate wallets on first run (skip if already present)
+  try {
+    const { WalletManager } = require('../src/wallet/WalletManager');
+    const wm = new WalletManager(JELLY_HOME);
+    if (!wm.hasWallets()) {
+      console.log('\n🔑  Generating wallets...');
+      wm.generateAll();
+      const summary = wm.getSummary();
+      for (const [chain, addr] of Object.entries(summary)) {
+        console.log(`   ${chain.padEnd(8)} ${addr}`);
+      }
+      console.log('');
+    } else {
+      console.log('   Wallets already present — skipped\n');
+    }
+  } catch (e) {
+    console.log(`   (wallet generation skipped: ${e.message})\n`);
+  }
+
+  console.log(`Run: jellyos\n`);
+}
