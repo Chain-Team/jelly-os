@@ -66,9 +66,16 @@ if (!piBin) {
 }
 
 // ── Launch Pi with JellyOS extension ─────────────────────────────────────────
+const SKILLS_DIR  = path.join(PKG_ROOT, 'skills');
+const PROMPTS_DIR = path.join(PKG_ROOT, 'prompts');
+
 const piArgs = [
-  '--extension', EXT_FILE,
-  '--theme', path.join(THEME_DIR, 'jelly.json'),
+  '--extension',        EXT_FILE,
+  '--theme',            path.join(THEME_DIR, 'jelly.json'),
+  '--skill',            path.join(SKILLS_DIR, 'trading'),
+  '--skill',            path.join(SKILLS_DIR, 'analysis'),
+  '--skill',            path.join(SKILLS_DIR, 'vault'),
+  '--prompt-template',  PROMPTS_DIR,
   ...process.argv.slice(2),
 ];
 

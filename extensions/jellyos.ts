@@ -155,20 +155,43 @@ export default function jellyos(pi: ExtensionAPI): void {
     dashServer.close();
   });
 
-  // Inject live vault/f&g context into the system prompt before each turn
+  // Inject JellyOS identity + live context into every turn's system prompt
   pi.on("before_agent_start", async (_e, _ctx) => {
-    const fngItem = feeds?.getRecent({ source: "alternative.me", limit: 1 })?.[0];
-    const fng     = fngItem?.metadata?.score as number | undefined;
+    // Load JellyOS system prompt from prompts/jellyos.md
+    let basePrompt = "";
+    try {
+      const { readFileSync } = require("node:fs");
+      const promptPath = path.join(__dirname, "..", "prompts", "jellyos.md");
+      basePrompt = readFileSync(promptPath, "utf-8");
+    } catch { /* fall through with empty base */ }
+
+    // Build live context snippet (vault balance + fear & greed)
+    const fngItem  = feeds?.getRecent({ source: "alternative.me", limit: 1 })?.[0];
+    const fng      = fngItem?.metadata?.score as number | undefined;
     const fngLabel = fngItem?.metadata?.label as string | undefined;
     const vaultLine = vault
-      ? (vault.isLocked() ? "vault: 🔒 locked" : `vault: 🔓 $${vault.getStats().balance?.toFixed(2) ?? "0"}`)
+      ? (vault.isLocked() ? "vault: locked" : `vault: unlocked $${vault.getStats().balance?.toFixed(2) ?? "0"}`)
       : null;
-    const bits = [vaultLine, fng != null ? `f&g: ${fng}/100 (${fngLabel})` : null].filter(Boolean);
-    if (bits.length === 0) return;
-    const extra = `\n\n<!-- Live context: ${bits.join(" | ")} -->`;
-    return { systemPrompt: undefined } as any; // Pi will append via additionalContext
-    // Note: use the return value if Pi supports systemPrompt replacement — otherwise
-    // the live context is available via get_system_status tool.
+    const effectLine = (() => {
+      try {
+        const { readFileSync, existsSync } = require("node:fs");
+        const ctxPath = path.join(JELLY_HOME, "context.json");
+        return existsSync(ctxPath)
+          ? `effect_level: ${JSON.parse(readFileSync(ctxPath, "utf-8")).effect_level ?? "normal"}`
+          : "effect_level: normal";
+      } catch { return "effect_level: normal"; }
+    })();
+    const liveBits = [
+      vaultLine,
+      fng != null ? `fear_greed: ${fng}/100 (${fngLabel})` : null,
+      effectLine,
+    ].filter(Boolean) as string[];
+    const liveBlock = liveBits.length > 0
+      ? `\n\n## Live Context\n${liveBits.map(b => `- ${b}`).join("\n")}`
+      : "";
+
+    const systemPrompt = basePrompt + liveBlock;
+    return systemPrompt ? { systemPrompt } : undefined;
   });
 
   // ── Slash commands ─────────────────────────────────────────────────────────
@@ -275,6 +298,26 @@ export default function jellyos(pi: ExtensionAPI): void {
     },
   });
 
+  pi.registerCommand("changelog", {
+    description: "Show JellyOS release notes",
+    async handler(_args, ctx) {
+      ctx.ui.notify([
+        ctx.ui.theme.fg("accent", "JellyOS Changelog"),
+        "",
+        ctx.ui.theme.fg("border", "v2.0.0") + " — Pi-based rebuild",
+        "  · Replaced custom agent engine with Pi extension",
+        "  · 22 domain tools: market, blockchain, vault, trading, feeds, prediction",
+        "  · Jelly cyan/purple theme + custom ASCII header",
+        "  · AutoVault: auto-sweeps profits at configurable threshold",
+        "  · Live data feeds: prices, news, F&G, DeFi TVL, whale alerts",
+        "  · Dashboard SSE server on port 4320",
+        "  · Wallets: EVM, Solana, Cosmos generated on setup",
+        "",
+        ctx.ui.theme.fg("border", "v1.x") + " — Custom Ink TUI (legacy)",
+      ].join("\n"));
+    },
+  });
+
   pi.registerCommand("unlock", {
     description: "Unlock the profit vault — usage: /unlock <passphrase>",
     async handler(args, ctx) {
@@ -321,6 +364,10 @@ export default function jellyos(pi: ExtensionAPI): void {
         `${id.toUpperCase()}: $${info.usd?.toLocaleString() ?? "?"} | 24h: ${info.usd_24h_change?.toFixed(2) ?? "?"}% | Vol: ${fmtUsd(info.usd_24h_vol ?? 0)}`
       );
       if (lines.length === 0) throw new Error("No data returned — check asset IDs");
+      const pricePayload = Object.entries(data).map(([id, info]: [string, any]) => ({
+        id, price: info.usd, change24h: info.usd_24h_change, ts: Date.now(),
+      }));
+      broadcastSse("prices", pricePayload);
       return text(lines.join("\n"));
     },
   });
@@ -582,6 +629,8 @@ export default function jellyos(pi: ExtensionAPI): void {
         return text(`Confirm sweeping $${params.amount.toFixed(2)} to vault? Call again with confirm: true.`);
       }
       await vault.sweep(params.amount, params.note ?? "manual-sweep");
+      broadcastSse("vault_sweep", { amount: params.amount, note: params.note, ts: Date.now() });
+      broadcastSse("vault_balance", { balance: vault.getStats().balance, ts: Date.now() });
       return text(`✅ Swept $${params.amount.toFixed(2)} to vault`);
     },
   });
@@ -665,6 +714,10 @@ export default function jellyos(pi: ExtensionAPI): void {
       const explorer = params.chain === "solana"
         ? `https://solscan.io/tx/${txHash}`
         : `https://etherscan.io/tx/${txHash}`;
+      broadcastSse("trade", {
+        pair: params.pair, side: params.side, amount_usd: params.amount_usd,
+        chain: params.chain, txHash, ts: Date.now(),
+      });
       return text(
         `✅ Trade submitted: ${params.side.toUpperCase()} $${params.amount_usd} ${params.pair} on ${params.chain}\n` +
         `Tx: ${txHash}\nExplorer: ${explorer}\n\nNote: Demo mode — connect DEX adapters for live execution.`
@@ -763,6 +816,9 @@ export default function jellyos(pi: ExtensionAPI): void {
       if (!signals) throw new Error("Signal engine not initialized");
       const sigs = signals.getActiveSignals(params.asset);
       if (sigs.length === 0) return text("No active signals at this time");
+      broadcastSse("signals", sigs.map((s: any) => ({
+        asset: s.asset, direction: s.direction, strength: s.strength, confidence: s.confidence, ts: Date.now(),
+      })));
       return text(sigs.map(s =>
         `[${s.asset}] ${s.direction.toUpperCase()} | Strength: ${(s.strength * 100).toFixed(0)}% | Conf: ${(s.confidence * 100).toFixed(0)}%\n  ${s.rationale}`
       ).join("\n\n"));
