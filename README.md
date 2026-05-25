@@ -10,6 +10,7 @@
 ╚█████╔╝███████╗███████╗███████╗██║    ╚██████╔╝███████║
  ╚════╝ ╚══════╝╚══════╝╚══════╝╚═╝     ╚═════╝ ╚══════╝
 
+     PI framework via jelly Extension.
   / commands · esc · ctrl+c exit · ctrl+e effect  BETA · Agent
 
 
